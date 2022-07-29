@@ -14,7 +14,7 @@ docker run -it -d --name diffmonitor \
     -v /data/diffmonitor/.env:/app/.env \
     -v /data/diffmonitor/data.db:/app/data.db \
     -v /data/diffmonitor/log:/app/log \
-    diffmonitor
+    cszhi/diffmonitor
 
 docker exec -it diffmonitor sh -c "flask initdb" 
 ```

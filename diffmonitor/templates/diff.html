@@ -1,0 +1,467 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row marketing">
+    <div class="col-md-8">
+        <form class="form-inline">
+            <div class="form-group">
+                <label>主机名称</label>
+                <input type="text" class="form-control" name="hostname" autocomplete="off" {% if hostname %}
+                    value="{{ hostname }}" {% endif %}>
+                <label>监控名称</label>
+                <input type="text" class="form-control" name="type" autocomplete="off" {% if type %} value="{{ type }}"
+                    {% endif %}>
+                <input type="hidden" name="page_size" value={{page_size}}>
+            </div>
+            <input class="btn btn-default" type="submit" value="查询">
+        </form>
+    </div>
+
+    <div class="col-md-4 ">
+        {% if current_user.is_admin %}
+        <div class="btn-group pull-right">
+            <button type="button" class="btn btn-default" data-toggle="modal"
+                data-target="#BatchConfirmModal">批量标记</button>
+            <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true"
+                aria-expanded="false">
+                <span class="caret"></span>
+                <span class="sr-only">Toggle Dropdown</span>
+            </button>
+            <ul class="dropdown-menu">
+                <li><a href="#" data-toggle="modal" data-target="#BatchDeleteModal">批量删除</a></li>
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+<div class="row marketing">
+    <div class="col-md-12">
+
+        <table class="table table-hover table-striped table-bordered">
+
+            <caption>对比监控<span class="pull-right">每页
+                    <select class="form-control input-sm" id="pagesize" sel="{{page_size}}">
+                        <option value="15">15</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>项</span>
+            </caption>
+            <tr>
+                {% if current_user.is_admin %}
+                <th><input type="checkbox" onclick="checkAll(this)"></th>
+                {% endif %}
+                <th>时间</th>
+                <th>主机名称</th>
+                <th>监控名称</th>
+                <th>变更内容</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+            {% for item in diffs %}
+            <tr>
+                {% if current_user.is_admin %}
+                <td><input type="checkbox" name="check" value="{{ item.id  }}"></td>
+                {% endif %}
+                <td><span class="label label-primary">{{ item.updated_at.strftime("%Y-%m-%d %H:%M:%S") }}</span></td>
+                <td><a data-toggle="tooltip" data-placement="top" title=""
+                        data-original-title="{{item.hostname}} {{item.type}}历史记录"
+                        href="{{ url_for('diff_record',hostname=item.hostname,type=item.type,page_size=page_size)}}">{{
+                        item.hostname }}</a></td>
+                <td>{{ item.type }}</td>
+                <td>{% if item.diff %} <span class="label label-info">{{ item.diff[0:40] }}...</span> {% else %} - {%
+                    endif %}</td>
+                <td>{% if item.status == 3%} <span class="label label-danger">异常</span> {%elif item.status == 1%} <span
+                        class="label label-info">处理中</span> {% else %} <span class="label label-success">正常</span>
+                    {%endif%}</td>
+                <td>
+                    <a href="#" data-toggle="modal" data-target="#InfoModal" data-id="{{ item.id }}"><span
+                            class="glyphicon glyphicon-eye-open"></span></a>
+                    {% if item.status != 0 %}
+                    <a href="#" data-toggle="modal" data-target="#ConfirmModal" data-id="{{ item.id }}"
+                        data-diff="{{ item.diff }}" data-action="{{ url_for('diff_confirm', diff_id=item.id) }}"><span
+                            class="glyphicon glyphicon-edit" aria-hidden="true"></span></a>
+                    {% endif %}
+                    {% if current_user.is_admin %}
+                    <a class="red" href="#" data-toggle="modal" data-target="#DeleteModal"
+                        data-hostname="{{ item.hostname }}"
+                        data-action="{{ url_for('diff_delete', diff_id=item.id) }}"><span
+                            class="glyphicon glyphicon-trash" aria-hidden="true"></span></a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <span class="pull-left">{{ pagination.info|safe }}</span>
+        <span class="pull-right">{{ pagination.links|safe }}</span>
+
+
+    </div>
+
+    <div class="modal fade" id="ConfirmModal" tabindex="-1" role="dialog" aria-labelledby="ConfirmModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <a type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                            aria-hidden="true">&times;</span></a>
+                    <h4 class="modal-title" id="ConfirmModalLabel"></h4>
+
+                </div>
+                <div class="modal-body">
+                    <span>
+                        <pre id="diff"></pre>
+                    </span>
+                </div>
+
+                <div class="modal-footer">
+
+                    <form method="post" action="">
+                        <div class="form-group">
+                            <textarea class="form-control" rows="3" placeholder="请添加备注信息" name="comment"
+                                required></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <span class="pull-left">
+                                状态:
+                                <input type="radio" name="status" value="0" required checked> 正常
+                                <input type="radio" name="status" value="1" required> 处理中
+                            </span>
+                            {#
+                            <label class="radio-inline pull-left">
+                                <input type="radio" name="status" value="3" required> 异常
+                            </label>
+                            #}
+                            <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                            <button type="submit" class="btn btn-primary">确认</button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="BatchConfirmModal" tabindex="-1" role="dialog" aria-labelledby="BatchConfirmModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <a type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                            aria-hidden="true">&times;</span></a>
+                    <h4 class="modal-title" id="BatchConfirmModalLabel"></h4>
+
+                </div>
+                {#
+                <div class="modal-body">
+                    <span>
+                        <pre id="diff"></pre>
+                    </span>
+                </div>
+                #}
+
+                <div class="modal-footer">
+
+                    <form method="post" action="{{ url_for('diff_batch_confirm')}}">
+                        <div class="form-group">
+                            <textarea class="form-control" rows="3" placeholder="请添加备注信息" name="comment"
+                                required></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <input class="form-control" type="hidden" name="ids" id="ids" required>
+                        </div>
+
+                        <div class="form-group">
+                            <span class="pull-left">
+                                状态:
+                                <input type="radio" name="status" value="0" required checked> 正常
+                                <input type="radio" name="status" value="1" required> 处理中
+                            </span>
+                            {#
+                            <label class="radio-inline pull-left">
+                                <input type="radio" name="status" value="3" required> 异常
+                            </label>
+                            #}
+                            <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                            <button type="submit" class="btn btn-primary">确认</button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="ProcessModal" tabindex="-1" role="dialog" aria-labelledby="ProcessModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <a type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                            aria-hidden="true">&times;</span></a>
+                    <h4 class="modal-title" id="ProcessModalLabel"></h4>
+                </div>
+
+                <div class="modal-footer">
+                    <form method="post" action="">
+                        <div class="form-group">
+                            <textarea class="form-control" rows="3" placeholder="请添加备注信息" name="comment"
+                                required></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <div>
+                                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                                <button type="submit" class="btn btn-primary">确认</button>
+                            </div>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade" id="InfoModal" tabindex="-1" role="dialog" aria-labelledby="InfoModalLabel">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <a type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                            aria-hidden="true">&times;</span></a>
+                    <h4 class="modal-title" id="InfoModalLabel">详细信息</h4>
+                </div>
+
+                <div class="modal-body">
+                    <table class="table" style="word-break:break-all;word-wrap:break-word;">
+                        <tr>
+                            <th style="width:100px">主机名称</th>
+                            <td id="a_hostname"></td>
+                        </tr>
+                        <tr>
+                            <th>监控名称</th>
+                            <td id="a_type"></td>
+                        </tr>
+                        <tr>
+                            <th>管理IP</th>
+                            <td id="a_ip"></td>
+                        </tr>
+                        <tr>
+                            <th>创建时间</th>
+                            <td id="a_created_at"></td>
+                        </tr>
+                        <tr>
+                            <th>变更时间</th>
+                            <td id="a_updated_at"></td>
+                        </tr>
+                        <tr>
+                            <th>变更内容</th>
+                            <td>
+                                <pre style="width: 768px;" id="a_diff"></pre>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>原始内容</th>
+                            <td>
+                                <div class="panel box box-default">
+                                    <div class="box-header with-border">
+                                        <h4 class="box-title">
+                                            <a data-toggle="collapse" data-parent="#accordion" href="#collapseOne"
+                                                aria-expanded="false">
+                                                明细
+                                            </a>
+                                        </h4>
+                                    </div>
+                                    <div id="collapseOne" class="panel-collapse collapse" aria-expanded="false">
+                                        <div class="box-body">
+                                            <pre style="width: 768px;" id="a_content"></pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>最新内容</th>
+                            <td>
+                                <div class="panel box box-default">
+                                    <div class="box-header with-border">
+                                        <h4 class="box-title">
+                                            <a data-toggle="collapse" data-parent="#accordion" href="#collapseTwo"
+                                                aria-expanded="false">
+                                                明细
+                                            </a>
+                                        </h4>
+                                    </div>
+                                    <div id="collapseTwo" class="panel-collapse collapse" aria-expanded="false">
+                                        <div class="box-body">
+                                            <pre style="width: 768px;" id="a_newcontent"></pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="modal-footer">
+                    <form method="get" action="" class="pull-right">
+                        <div class="form-group">
+                            <div>
+                                <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+                            </div>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade" id="DeleteModal" tabindex="-1" role="dialog" aria-labelledby="DeleteModalLabel">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <a type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                            aria-hidden="true">&times;</span></a>
+                    <h4 class="modal-title" id="DeleteModalLabel">确认删除？</h4>
+                </div>
+                <div class="modal-footer">
+                    <form method="post" action="" class="pull-right">
+                        <div class="form-group">
+                            <div>
+                                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                                <button type="submit" class="btn btn-danger">删除</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="BatchDeleteModal" tabindex="-1" role="dialog" aria-labelledby="BatchDeleteModalLabel">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <a type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                            aria-hidden="true">&times;</span></a>
+                    <h4 class="modal-title" id="BatchDeleteModalLabel">确认删除？</h4>
+                </div>
+                <div class="modal-footer">
+                    <form method="post" action="{{ url_for('diff_batch_delete')}}" class="pull-right">
+                        <div class="form-group">
+                            <div class="form-group">
+                                <input class="form-control" type="hidden" name="ids" id="deleteids" required>
+                            </div>
+                            <div>
+                                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                                <button type="submit" class="btn btn-danger">删除</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    $(document).ready(function () {
+        $('#InfoModal').on('show.bs.modal', function (event) {
+            var button = $(event.relatedTarget)
+            var id = button.data('id')
+            $.ajax({
+                type: "get",
+                url: '/diff/show/' + id,
+                success: function (a) {
+                    $("#a_hostname").text(a.hostname)
+                    $("#a_type").text(a.type)
+                    $("#a_ip").text(a.ip)
+                    $("#a_created_at").text(a.created_at)
+                    $("#a_updated_at").text(a.updated_at)
+                    $("#a_diff").text(a.diff)
+                    $("#a_content").text(a.content)
+                    $("#a_newcontent").text(a.newcontent)
+                }
+            })
+        })
+
+        $('#ProcessModal').on('show.bs.modal', function (event) {
+            var a = $(event.relatedTarget)
+            var action = a.data('action')
+            var id = a.data('id')
+            var modal = $(this)
+            modal.find('.modal-header h4').text('确认已经在处理?')
+            modal.find('.modal-footer form').attr('action', action)
+        })
+
+        $('#ConfirmModal').on('show.bs.modal', function (event) {
+            var a = $(event.relatedTarget)
+            var action = a.data('action')
+            var diff = a.data('diff')
+            var id = a.data('id')
+            var modal = $(this)
+            modal.find('.modal-header h4').text('标记状态')
+            modal.find('.modal-body pre').text(diff)
+            modal.find('.modal-footer form').attr('action', action)
+        })
+
+        $('#BatchConfirmModal').on('show.bs.modal', function (event) {
+            var a = $(event.relatedTarget)
+            var action = a.data('action')
+            ids = ''
+            $("[name='check']:checked").each(function () {
+                ids += $(this).val() + " ";
+            });
+            var modal = $(this)
+            modal.find('#ids').attr('value', ids)
+            modal.find('.modal-header h4').text('批量标记状态')
+        })
+
+        $('#BatchDeleteModal').on('show.bs.modal', function (event) {
+            var a = $(event.relatedTarget)
+            var action = a.data('action')
+            ids = ''
+            $("[name='check']:checked").each(function () {
+                ids += $(this).val() + " ";
+            });
+            var modal = $(this)
+            modal.find('#deleteids').attr('value', ids)
+            modal.find('.modal-header h4').text('批量删除')
+        })
+
+        $('#DeleteModal').on('show.bs.modal', function (event) {
+            var a = $(event.relatedTarget)
+            var action = a.data('action')
+            var modal = $(this)
+            modal.find('.modal-footer form').attr('action', action)
+
+        });
+
+        $('[data-toggle="tooltip"]').tooltip()
+
+        var temp = $("#pagesize").attr("sel");
+        $("#pagesize").val(temp);
+        $('select').on('change', function () {
+            var a = "{{ hostname }}" != "None" ? "{{ hostname }}" : ''
+            var b = "{{ type }}" != "None" ? "{{ type }}" : ''
+            $(location).attr('href', '?hostname=' + a + '&type=' + b + '&page_size=' + this.value);
+        });
+    });
+
+    function checkAll(bx) {
+        var cbs = document.getElementsByTagName('input');
+        for (var i = 0; i < cbs.length; i++) {
+            if (cbs[i].type == 'checkbox') {
+                cbs[i].checked = bx.checked;
+            }
+        }
+    }
+
+</script>
+{% endblock %}

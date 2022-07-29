@@ -1,0 +1,63 @@
+body {
+    /*min-height: 2000px;*/
+    padding-top: 70px;
+  }
+
+.form-signin {
+    max-width: 330px;
+    padding: 15px;
+    margin: 0 auto;
+}
+
+.form-signin input {
+  margin: 15px auto;
+}
+
+.login-box {
+  width: 360px;
+  /*margin: 3% auto;*/
+}
+
+.marketing {
+  margin: 15px -15px;
+}
+
+.inline {
+  display:inline;
+}
+
+.pagination {
+  margin: 0;
+}
+.pagination-page-info {
+  padding-left: 0;
+  width: 40em;
+  margin-left: 0;
+  font-size: 16px;
+}
+.pagination-page-info b {
+  color: black;
+  background: #6aa6ed;
+  padding-left: 2px;
+  padding: .1em .25em;
+  font-size: 150%;
+}
+
+.form-group select {
+  display: inline-block;
+  width: auto;
+  /*vertical-align: middle;*/
+}
+
+.input-sm {
+  height: 20px;
+  line-height: 20px;
+  padding: 0px;
+  width: 50px;
+  display: inline-block;
+}
+
+a.red {
+  color: #d01818;
+}
+a.red:hover {color:#8d2b2b;}

@@ -1,0 +1,256 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row marketing">
+    <div class="col-md-12">
+        <form class="form-inline">
+            <div class="form-group">
+                <label>主机名称</label>
+                <input type="text" class="form-control" name="hostname" autocomplete="off" {% if hostname %}
+                    value="{{ hostname }}" {% endif %}>
+                <label>监控名称</label>
+                <input type="text" class="form-control" name="type" autocomplete="off" {% if type %} value="{{ type }}"
+                    {% endif %}>
+                <input type="hidden" name="page_size" value={{page_size}}>
+            </div>
+            <input class="btn btn-default" type="submit" value="查询">
+        </form>
+    </div>
+
+</div>
+
+<div class="row marketing">
+    <div class="col-md-12">
+
+        <table class="table table-hover table-striped table-bordered">
+            <caption>历史记录<span class="pull-right">每页
+                <select class="form-control input-sm" id="pagesize" sel="{{page_size}}">
+                    <option value="15">15</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>项</span>
+
+            </caption>
+            <tr>
+                <th>时间</th>
+                <th>主机名称</th>
+                <th>监控名称</th>
+                <th>状态</th>
+                <th>备注</th>
+                <th>操作人</th>
+                <th>查看</th>
+            </tr>
+            {% for item in diffs %}
+            <tr>
+                <td><span class="label label-primary">{{ item.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</span></td>
+                <td>{{ item.hostname }}</td>
+                <td>{{ item.type }}</td>
+                <td>
+                    {% if item.action == "create" %}
+                    <span class="label label-info">初始化</span>
+                    {% elif item.action == "change" %}
+                    <span class="label label-danger">内容变更</span>
+                    {% elif item.action == "recovery" %}
+                    <span class="label label-success">自动恢复</span>
+                    {% elif item.action == "process" %}
+                    <span class="label label-info">处理中</span>
+                    {% else %}
+                    <span class="label label-success">标记正常</span>
+                    {% endif %}
+                </td>
+                {% if item.action == "change" %}
+                <td><span class="label label-info">{{ item.diff[0:40] }}...</span></td>
+                {% else %}
+                <td>{{ item.comment if item.comment else '-' }} </td>
+                {% endif %}
+                </td>
+                <td>{{ item.username if item.username else '-' }}</td>
+                <td>
+                    <a href="#" data-toggle="modal" data-target="#InfoModal" data-id="{{ item.id }}"><span
+                            class="glyphicon glyphicon-eye-open"></span></a>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <span class="pull-left">{{ pagination.info|safe }}</span>
+        <span class="pull-right">{{ pagination.links|safe }}</span>
+
+    </div>
+
+    <div class="modal fade" id="InfoModal" tabindex="-1" role="dialog" aria-labelledby="InfoModalLabel">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <a type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                            aria-hidden="true">&times;</span></a>
+                    <h4 class="modal-title" id="InfoModalLabel">详细信息</h4>
+                </div>
+
+                <div class="modal-body">
+                    <table class="table" style="word-break:break-all;word-wrap:break-word;">
+                        <tr>
+                            <th style="width:100px">主机名称</th>
+                            <td id="a_hostname"></td>
+                        </tr>
+                        <tr>
+                            <th>监控名称</th>
+                            <td id="a_type"></td>
+                        </tr>
+                        <tr>
+                            <th>管理IP</th>
+                            <td id="a_ip"></td>
+                        </tr>
+                        <tr>
+                            <th>创建时间</th>
+                            <td id="a_created_at"></td>
+                        </tr>
+                        <tr>
+                            <th>变更内容</th>
+                            <td>
+                                <pre style="width: 768px;" id="a_diff"></pre>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>原始内容</th>
+                            <td>
+                                <div class="panel box box-default">
+                                    <div class="box-header with-border">
+                                        <h4 class="box-title">
+                                            <a data-toggle="collapse" data-parent="#accordion" href="#collapseOne"
+                                                aria-expanded="false">
+                                                明细
+                                            </a>
+                                        </h4>
+                                    </div>
+                                    <div id="collapseOne" class="panel-collapse collapse" aria-expanded="false">
+                                        <div class="box-body">
+                                            <pre style="width: 768px;" id="a_content"></pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>最新内容</th>
+                            <td>
+                                <div class="panel box box-default">
+                                    <div class="box-header with-border">
+                                        <h4 class="box-title">
+                                            <a data-toggle="collapse" data-parent="#accordion" href="#collapseTwo"
+                                                aria-expanded="false">
+                                                明细
+                                            </a>
+                                        </h4>
+                                    </div>
+                                    <div id="collapseTwo" class="panel-collapse collapse" aria-expanded="false">
+                                        <div class="box-body">
+                                            <pre style="width: 768px;" id="a_newcontent"></pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>备注</th>
+                            <td>
+                                <pre style="width:760px" id="a_comment"></pre>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>操作人</th>
+                            <td id="a_username"></td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="modal-footer">
+                    <form method="get" action="" class="pull-right">
+                        <div class="form-group">
+                            <div>
+                                <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+                            </div>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="DeleteModal" tabindex="-1" role="dialog" aria-labelledby="DeleteModalLabel">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <a type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                            aria-hidden="true">&times;</span></a>
+                    <h4 class="modal-title" id="DeleteModalLabel">确认删除？</h4>
+                </div>
+                <div class="modal-footer">
+                    <form method="post" action="" class="pull-right">
+                        <div class="form-group">
+                            <div>
+                                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                                <button type="submit" class="btn btn-danger">删除</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    $(document).ready(function () {
+        $('#InfoModal').on('show.bs.modal', function (event) {
+            var button = $(event.relatedTarget)
+            var id = button.data('id')
+            $.ajax({
+                type: "get",
+                url: '/diffrecord/show/' + id,
+                success: function (a) {
+                    //a = eval("(" + a + ")") //获取内容显示undefined https://blog.csdn.net/qq_40974751/article/details/121911659
+                    $("#a_hostname").text(a.hostname)
+                    $("#a_type").text(a.type)
+                    $("#a_ip").text(a.ip)
+                    $("#a_created_at").text(a.created_at)
+                    $("#a_diff").text(a.diff)
+                    $("#a_content").text(a.content)
+                    $("#a_newcontent").text(a.newcontent)
+                    $("#a_comment").text(a.comment)
+                    $("#a_username").text(a.username)
+                }
+            })
+        })
+
+        $('#DeleteModal').on('show.bs.modal', function (event) {
+            var a = $(event.relatedTarget)
+            var action = a.data('action')
+            var modal = $(this)
+            modal.find('.modal-footer form').attr('action', action)
+
+        });
+    });
+
+    function checkAll(bx) {
+        var cbs = document.getElementsByTagName('input');
+        for (var i = 0; i < cbs.length; i++) {
+            if (cbs[i].type == 'checkbox') {
+                cbs[i].checked = bx.checked;
+            }
+        }
+    }
+
+    var temp = $("#pagesize").attr("sel");
+    $("#pagesize").val(temp);
+    $('select').on('change', function () {
+        var a = "{{ hostname }}" != "None" ? "{{ hostname }}" : ''
+        var b = "{{ type }}" != "None" ? "{{ type }}" : ''
+        $(location).attr('href', '?hostname=' + a + '&type=' + b + '&page_size=' + this.value);
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+  <meta name="description" content="">
+  <meta name="author" content="caishunzhi">
+
+  <title>OPS</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap/css/bootstrap.min.css') }}" type="text/css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" type="text/css">
+</head>
+
+<body>
+  <nav class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <a class="navbar-brand" href="#">OPS</a>
+      </div>
+      <div id="navbar" class="navbar-collapse collapse">
+        <ul class="nav navbar-nav">
+          {% if current_user.is_authenticated %}
+          <li {% if page=='diff' %}class="active" {% endif %}><a href="{{ url_for('diff') }}">对比监控</a></li>
+          <li {% if page=='diffrecord' %}class="active" {% endif %}><a href="{{ url_for('diff_record') }}">历史记录</a></li>
+          {% endif %}
+        </ul>
+        <ul class="nav navbar-nav navbar-right">
+          {% if current_user.is_authenticated %}
+          <li class="dropdown">
+            <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true"
+              aria-expanded="false">{{ current_user.username }}<span class="caret"></span></a>
+            <ul class="dropdown-menu">
+              <li><a href="{{ url_for('settings') }}">设置</a></li>
+              <li role="separator" class="divider"></li>
+              <li><a href="{{ url_for('logout') }}">退出</a></li>
+            </ul>
+          </li>
+          {% else %}
+          <li {% if page=='login' %}class="active" {% endif %}><a href="{{ url_for('login') }}">登录</a></li>
+          {% endif %}
+        </ul>
+      </div>
+      <!--/.nav-collapse -->
+    </div>
+  </nav>
+
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+
+  {#<script src="http://cdn.bootcss.com/jquery/1.12.4/jquery.min.js"></script>#}
+  <script src="{{ url_for('static', filename='bootstrap/js/jquery.min.js') }}"></script>
+  {#<script src="{{ url_for('static', filename='bootstrap/js/jquery.base64.js') }}"></script>#}
+  <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.min.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='toastr/toastr.min.css') }}" type="text/css">
+  <script src="{{ url_for('static', filename='toastr/toastr.min.js') }}"></script>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  {% for category, message in messages %}
+  <script type="text/javascript">
+    $(function () {
+      toastr.options = {
+        "closeButton": true,
+        "progressBar": false,
+        "timeOut": "3000",
+        "positionClass": "toast-top-right"
+      }
+
+      toastr["{{ category }}"]("{{ message }}")
+    });
+  </script>
+  {% endfor %}
+  {% endif %}
+  {% endwith %}
+
+  {% block script %}{% endblock %}
+</body>
+
+</html>

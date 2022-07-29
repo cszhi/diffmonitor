@@ -1,0 +1,2 @@
+FLASK_ENV=development #production
+FLASK_APP=diffmonitor

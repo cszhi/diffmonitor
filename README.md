@@ -53,7 +53,8 @@ sh diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.132
 ### 定时任务
 > 将脚本放到定时任务执行，这里设置每10分钟运行一次
 ```
-grep diff_m.sh /var/spool/cron/root >/dev/null || echo '*/10 * * * * sh /opt/diff_m/diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.32' >>/var/spool/cron/root
+grep diff_m.sh /var/spool/cron/root >/dev/null || \
+    echo '*/10 * * * * sleep ${RANDOM: -1}; sh /opt/diff_m/diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.32' >>/var/spool/cron/root
 ```
 
 ### 自定义脚本说明

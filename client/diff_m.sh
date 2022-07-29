@@ -9,7 +9,6 @@ export PATH
 
 DIR=$(cd "$(dirname "$0")"; pwd)
 LOG=$DIR/log
-sleep ${RANDOM: -1}
 CURL="curl -s --connect-timeout 30"
 [ -n "$1" ] && SERVER=$1 || { echo "Please enter server address!!"; exit 1; }
 API="http://$SERVER/api"

@@ -30,7 +30,7 @@ docker exec -it diffmonitor sh -c "flask initdb"
 cat >/opt/diff_m/list.conf <<EOF
 authorized_keys file /root/.ssh/authorized_keys
 shadow file /etc/shadow
-ceph file /etc/ceph.conf
+ceph file /etc/ceph/ceph.conf
 ceph_osd_tree shell ceph_osd_tree.sh
 iface shell iface.sh
 EOF

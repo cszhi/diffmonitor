@@ -1,10 +1,11 @@
-from flask import request,jsonify
+from flask import request, jsonify, abort
 
 from diffmonitor import app, db
 from diffmonitor.models import Diff, DiffRecord
 from datetime import datetime
 import json
 import base64
+import os
 
 '''
 #将查询结果对象列表转换为指定格式的字典
@@ -12,6 +13,23 @@ import base64
 def dict_helper(objlist):
     result2 = [item.obj_to_dict() for item in objlist]   # 获取类自定义字典转换函数，转换为字典列表
     return result2
+
+
+def require_api_token():
+    api_token = os.getenv('API_TOKEN')
+    if not api_token:
+        abort(401)
+
+    request_token = request.headers.get('X-API-Token')
+    if request_token != api_token:
+        abort(401)
+
+
+@app.before_request
+def check_api_token():
+    if request.path.startswith('/api/'):
+        require_api_token()
+
 
 @app.route('/api/create', methods=['POST'])
 def api_create():

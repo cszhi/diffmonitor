@@ -1,3 +1,6 @@
+import os
+import secrets
+
 import click
 
 from diffmonitor import app, db
@@ -10,16 +13,25 @@ def initdb(drop):
     if drop:
         db.drop_all()
     db.create_all()
-    
+
     username = 'admin'
-    user = User(
-        username=username, 
-        is_admin=True, 
-        password_hash='pbkdf2:sha256:260000$lpIPQMSnBRpdSSSf$dd059672c41336d39fbaf0a02c168ecd50d18fe824b40c55059102d4dbcd252c' #Admin123
-    )
+    user = User.query.filter(User.username == username).first()
+    if user is not None:
+        click.echo('Admin user already exists. Skip creating default admin.')
+        click.echo('Initialized database.')
+        return
+
+    password = os.getenv('ADMIN_PASSWORD')
+    if not password:
+        password = secrets.token_urlsafe(16)
+        click.echo('ADMIN_PASSWORD is not set. Generated admin password: {}'.format(password))
+
+    user = User(username=username, is_admin=True)
+    user.set_password(password)
     db.session.add(user)
     db.session.commit()
 
+    click.echo('Created admin user: {}'.format(username))
     click.echo('Initialized database.')
 
 @app.cli.command()

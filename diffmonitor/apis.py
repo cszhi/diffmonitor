@@ -11,7 +11,7 @@ import os
 #将查询结果对象列表转换为指定格式的字典
 '''
 def dict_helper(objlist):
-    result2 = [item.obj_to_dict() for item in objlist]   # 获取类自定义字典转换函数，转换为字典列表
+    result2 = [item.obj_to_dict() for item in objlist]
     return result2
 
 
@@ -25,6 +25,16 @@ def require_api_token():
         abort(401)
 
 
+def require_form(*fields):
+    values = {}
+    for field in fields:
+        value = request.form.get(field)
+        if value is None:
+            abort(400, description='missing parameter: {}'.format(field))
+        values[field] = value
+    return values
+
+
 @app.before_request
 def check_api_token():
     if request.path.startswith('/api/'):
@@ -33,27 +43,27 @@ def check_api_token():
 
 @app.route('/api/create', methods=['POST'])
 def api_create():
-    hostname = request.form['hostname']
-    type = request.form['type']
-    md5 = request.form['md5']
-    ip = request.form['ip']
-    content = request.form['content']
+    form = require_form('hostname', 'type', 'md5', 'ip', 'content')
+
+    hostname = form['hostname']
+    type = form['type']
+    md5 = form['md5']
+    ip = form['ip']
+    content = form['content']
     now = datetime.now()
 
-    #创建记录
     diff = Diff(
         hostname=hostname,
         type=type,
         ip=ip,
         md5=md5,
         content=content,
-        created_at = now,
-        updated_at = now
+        created_at=now,
+        updated_at=now
     )
     db.session.add(diff)
     db.session.commit()
 
-    #创建历史监控记录
     diffrecord = DiffRecord(
         hostname=hostname,
         type=type,
@@ -61,27 +71,30 @@ def api_create():
         md5=md5,
         content=content,
         action='create',
-        created_at = now
+        created_at=now
     )
     db.session.add(diffrecord)
     db.session.commit()
 
-    return "create "+hostname+" "+type+" success. "
+    return "create {} {} success. ".format(hostname, type)
+
 
 @app.route('/api/md5', methods=['POST'])
 def api_md5():
-    hostname = request.form['hostname']
-    type = request.form['type']
-    md5 = request.form['md5']
+    form = require_form('hostname', 'type', 'md5')
+
+    hostname = form['hostname']
+    type = form['type']
+    md5 = form['md5']
+
     diff = Diff.query.filter(Diff.hostname == hostname, Diff.type == type).first()
     now = datetime.now()
 
     if diff:
         if diff.newmd5 == md5:
             return 'status_no_ok'
-        
-        #自动恢复
-        if diff.md5 == md5 and diff.status !=0:
+
+        if diff.md5 == md5 and diff.status != 0:
             diff.newmd5 = ""
             diff.newcontent = ""
             diff.diff = ""
@@ -89,7 +102,6 @@ def api_md5():
             diff.updated_at = now
             db.session.commit()
 
-            #创建自动恢复历史记录
             diffrecord = DiffRecord(
                 hostname=diff.hostname,
                 type=diff.type,
@@ -103,29 +115,36 @@ def api_md5():
             db.session.commit()
 
         return diff.md5
+
     return 'null'
+
 
 @app.route('/api/content', methods=['POST'])
 def api_content():
-    hostname = request.form['hostname']
-    type = request.form['type']
+    form = require_form('hostname', 'type')
 
-    diff = Diff.query.filter(Diff.hostname == hostname, Diff.type == type).first()
-    
+    diff = Diff.query.filter(
+        Diff.hostname == form['hostname'],
+        Diff.type == form['type']
+    ).first()
+
     return diff.content if diff else ''
+
 
 @app.route('/api/update', methods=['POST'])
 def api_update():
-    hostname = request.form['hostname']
-    type = request.form['type']
-    newmd5 = request.form['newmd5']
-    newcontent = request.form['newcontent']
-    diffcontent = request.form['diff']
+    form = require_form('hostname', 'type', 'newmd5', 'newcontent', 'diff')
+
+    hostname = form['hostname']
+    type = form['type']
+    newmd5 = form['newmd5']
+    newcontent = form['newcontent']
+    diffcontent = form['diff']
+
     now = datetime.now()
     diff = Diff.query.filter(Diff.hostname == hostname, Diff.type == type).first()
 
     if diff:
-        #更新
         diff.newmd5 = newmd5
         diff.newcontent = newcontent
         diff.diff = diffcontent
@@ -133,7 +152,6 @@ def api_update():
         diff.status = 3
         db.session.commit()
 
-        #创建历史记录
         diffrecord = DiffRecord(
             hostname=hostname,
             type=type,
@@ -149,12 +167,16 @@ def api_update():
 
         db.session.add(diffrecord)
         db.session.commit()
-        return "update "+hostname+" "+type+" success. "
+        return "update {} {} success. ".format(hostname, type)
 
     return ''
 
+
 @app.route('/api/abnormal')
 def api_abnormal():
-    diff = Diff.query.with_entities(Diff.hostname,Diff.type).filter(Diff.status == 3).all()
-    return str(diff)+'\n'
-    #return jsonify(dict_helper(diff)) if diff else ''
+    diff = Diff.query.with_entities(
+        Diff.hostname,
+        Diff.type
+    ).filter(Diff.status == 3).all()
+
+    return str(diff) + '\n'

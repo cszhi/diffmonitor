@@ -51,22 +51,30 @@ ops()
 	if [ "$oldmd5" == "status_no_ok" ];then
 		continue
 	elif [ "$oldmd5" == "null" ];then
-		$CURL $API/create -d hostname="$HOSTNAME" -d ip="$IP" -d type="$1" -d md5="$md5" --data-urlencode content="`cat $content`"
+		if [ "$4" == "hashonly" ];then
+			$CURL $API/create -d hostname="$HOSTNAME" -d ip="$IP" -d type="$1" -d md5="$md5" --data-urlencode content="[hashonly] content hidden"
+		else
+			$CURL $API/create -d hostname="$HOSTNAME" -d ip="$IP" -d type="$1" -d md5="$md5" --data-urlencode content="`cat $content`"
+		fi
 		[ $? -eq 0 ] && log "create $HOSTNAME $1 success" || log "create $HOSTNAME $1 failed"
 		continue
 	elif [ "$oldmd5" != "$md5" ];then
-		$CURL $API/content -d hostname="$HOSTNAME" -d type="$1" >$DIR/tmp/${1}.tmp
-		sed -i -e '$a\' $DIR/tmp/${1}.tmp
-		DIFFCONTENT=$(diff $DIR/tmp/${1}.tmp $content)
-		$CURL $API/update -d hostname="$HOSTNAME" -d type="$1" -d newmd5="$md5" --data-urlencode newcontent="`cat $content`" --data-urlencode diff="$DIFFCONTENT";
+		if [ "$4" == "hashonly" ];then
+			$CURL $API/update -d hostname="$HOSTNAME" -d type="$1" -d newmd5="$md5" --data-urlencode newcontent="[hashonly] content hidden" --data-urlencode diff="[hashonly] content changed"
+		else
+			$CURL $API/content -d hostname="$HOSTNAME" -d type="$1" >$DIR/tmp/${1}.tmp
+			sed -i -e '$a\' $DIR/tmp/${1}.tmp
+			DIFFCONTENT=$(diff $DIR/tmp/${1}.tmp $content)
+			$CURL $API/update -d hostname="$HOSTNAME" -d type="$1" -d newmd5="$md5" --data-urlencode newcontent="`cat $content`" --data-urlencode diff="$DIFFCONTENT";
+		fi
 		[ $? -eq 0 ] && log "update $HOSTNAME $1 success" || log "update $HOSTNAME $1 failed"
 	fi
 }
 
-cat $DIR/list.conf |grep -v "^#" |while read name type action;
+cat $DIR/list.conf |grep -v "^#" |while read name type action mode;
 do
 	sleep 1
-	ops $name $type $action
+	ops $name $type $action $mode
 done
 
 echo "" >>$LOG

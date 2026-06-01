@@ -9,6 +9,9 @@
 mkdir /data/diffmonitor -p && cd /data/diffmonitor
 touch data.db
 echo "SECRET_KEY=`uuidgen | sed 's/-//g'`" >.env
+echo "API_TOKEN=`uuidgen | sed 's/-//g'`" >>.env
+echo "ADMIN_PASSWORD='请修改为强密码'" >>.env
+
 docker run -it -d --name diffmonitor \
     -p 5000:5000 \
     -v /data/diffmonitor/.env:/app/.env \
@@ -18,25 +21,40 @@ docker run -it -d --name diffmonitor \
 
 docker exec -it diffmonitor sh -c "flask initdb" 
 ```
-最后一条命令用于初始化数据库并创建管理员`admin`，密码`Admin123`
+最后一条命令用于初始化数据库并创建管理员`admin`。
+
+管理员密码优先使用`.env`中的`ADMIN_PASSWORD`。如果未配置`ADMIN_PASSWORD`，系统会自动生成随机密码并在初始化命令输出中打印一次，请妥善保存。
+
+`API_TOKEN`用于客户端访问`/api/*`接口时认证。未配置`API_TOKEN`时会兼容旧客户端，不启用接口认证；生产环境建议配置。
 
 ## 客户端部署
 将监控脚本`client/diff_m.sh`放到指定目录下，如`/opt/diff_m`
+
+如果服务端配置了`API_TOKEN`，客户端需要设置相同的环境变量：
+```
+export API_TOKEN='服务端.env中的API_TOKEN'
+```
+
+也可以在定时任务中直接指定：
+```
+API_TOKEN='服务端.env中的API_TOKEN' sh /opt/diff_m/diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.32
+```
 
 ### 创建对比配置文件 
 `list.conf`
 > 根据实际需求添加或删除监控项
 ```
 cat >/opt/diff_m/list.conf <<EOF
-authorized_keys file /root/.ssh/authorized_keys
-shadow file /etc/shadow
+authorized_keys file /root/.ssh/authorized_keys hashonly
+shadow file /etc/shadow hashonly
 ceph file /etc/ceph/ceph.conf
 ceph_osd_tree shell ceph_osd_tree.sh
 iface shell iface.sh
 EOF
 ```
-- 一行一个监控项，三列分别为：监控名称、监控类型、监控类型对应的文件路径或脚本名；
-- 支持两种监控类型：1、file：任意文本文件 2、shell：自定义shell脚本输出文本；脚本需要放到shell目录下；脚本说明见下方
+- 一行一个监控项，前三列分别为：监控名称、监控类型、监控类型对应的文件路径或脚本名；
+- 支持两种监控类型：1、file：任意文本文件 2、shell：自定义shell脚本输出文本；脚本需要放到shell目录下；脚本说明见下方；
+- 第四列可选，填写`hashonly`时只保存`md5/newmd5`和变化状态，不保存原始内容、最新内容和完整diff，适合`/etc/shadow`、`authorized_keys`等敏感文件；
 - 如果要取消某项监控，在对应行前面加#或者直接将该行删除；
 
 ### 手动执行 
@@ -47,14 +65,14 @@ EOF
 > 比如服务端地址是192.168.10.10:5000，主机名为ceph01，主机IP为10.10.16.132，用如下命令
 
 ```
-sh diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.132
+API_TOKEN='服务端.env中的API_TOKEN' sh diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.132
 ```
 
 ### 定时任务
 > 将脚本放到定时任务执行，这里设置每10分钟运行一次
 ```
 grep diff_m.sh /var/spool/cron/root >/dev/null || \
-    echo '*/10 * * * * sleep ${RANDOM: -1}; sh /opt/diff_m/diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.32' >>/var/spool/cron/root
+    echo '*/10 * * * * sleep ${RANDOM: -1}; API_TOKEN="服务端.env中的API_TOKEN" sh /opt/diff_m/diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.32' >>/var/spool/cron/root
 ```
 
 ### 自定义脚本说明
@@ -109,7 +127,7 @@ ip a |grep "^[[:digit:]]" |grep -E $mDEVICE |grep -v " vif" |awk -F: '{print $2"
 ## 访问web
 > 浏览器访问：http://server_ip:5000
 >
-> 管理员`admin`，默认密码`Admin123`
+> 管理员用户为`admin`，密码为初始化时配置的`ADMIN_PASSWORD`，如果未配置则使用初始化命令输出的随机密码。
 
 ### 登录页面
 ![login](diffmonitor/static/images/login.png)
@@ -136,7 +154,7 @@ ip a |grep "^[[:digit:]]" |grep -E $mDEVICE |grep -v " vif" |awk -F: '{print $2"
 
 ## 其他
 ### 权限说明
-只有管理员`admin`有删除记录的和批量操作的权限，其他权限和普通用户一致.
+只有管理员`admin`有删除记录和批量操作的权限，其他权限和普通用户一致.
 
 ### 创建普通用户和修改用户密码
 ```
@@ -152,7 +170,7 @@ MYSQL_USER="root"
 MYSQL_PASSWORD="password"
 MYSQL_HOST="127.0.0.1"
 MYSQL_PORT=3306
-MYSQL_DATABASE="diffmonitor""
+MYSQL_DATABASE="diffmonitor"
 ```
 然后连接`MySQL`并手动创建数据库 `create database diffmonitor`
 

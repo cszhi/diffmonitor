@@ -23,8 +23,12 @@ class User(db.Model, UserMixin):
 
 class Diff(db.Model):
     #__tablename__ = 'diff'
+    __table_args__ = (
+        db.UniqueConstraint('hostname', 'type', name='uniq_diff_hostname_type'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
-    hostname = db.Column(db.String(32), nullable=False, index=True, comment='主机名称') #unique=True
+    hostname = db.Column(db.String(32), nullable=False, index=True, comment='主机名称')
     ip = db.Column(db.String(32), comment='主机管理IP')
     type = db.Column(db.String(32), nullable=False, index=True, comment='监控类型')
     md5 = db.Column(db.String(32), nullable=False)

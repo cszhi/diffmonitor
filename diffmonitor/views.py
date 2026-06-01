@@ -1,7 +1,8 @@
-from flask import render_template, request, url_for, redirect, flash, jsonify
+from flask import render_template, request, url_for, redirect, flash, jsonify, abort
 from flask_login import login_user, login_required, logout_user, current_user
 from flask_paginate import Pagination, get_page_parameter
 from sqlalchemy import text
+from functools import wraps
 
 from diffmonitor import app, db
 from diffmonitor.models import User, Diff, DiffRecord
@@ -9,6 +10,16 @@ from datetime import datetime
 
 import os
 import sys
+
+
+def admin_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_admin:
+            abort(403)
+        return func(*args, **kwargs)
+    return wrapper
+
 
 @app.route('/diff/')
 @app.route('/')
@@ -125,6 +136,7 @@ def diff_confirm(diff_id):
 
 @app.route('/diff/batchconfirm/', methods=['POST'])
 @login_required
+@admin_required
 def diff_batch_confirm():
     comment = request.form['comment']
     status = request.form['status']
@@ -210,6 +222,7 @@ def diff_batch_confirm():
 
 @app.route('/diff/delete/<int:diff_id>', methods=['POST'])
 @login_required
+@admin_required
 def diff_delete(diff_id):
     diff = Diff.query.get_or_404(diff_id)
     db.session.delete(diff)
@@ -219,6 +232,7 @@ def diff_delete(diff_id):
 
 @app.route('/diff/batchdelete', methods=['POST'])
 @login_required
+@admin_required
 def diff_batch_delete():
     checked = request.form['ids']
     if not checked:

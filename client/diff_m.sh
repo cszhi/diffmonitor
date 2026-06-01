@@ -9,7 +9,8 @@ export PATH
 
 DIR=$(cd "$(dirname "$0")"; pwd)
 LOG=$DIR/log
-CURL="curl -s --connect-timeout 30"
+API_TOKEN=${API_TOKEN:-changeme}
+CURL="curl -s --connect-timeout 30 -H X-API-Token:$API_TOKEN"
 [ -n "$1" ] && SERVER=$1 || { echo "Please enter server address!!"; exit 1; }
 API="http://$SERVER/api"
 HOSTNAME=${2:-$HOSTNAME}

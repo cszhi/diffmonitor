@@ -18,7 +18,7 @@ def dict_helper(objlist):
 def require_api_token():
     api_token = os.getenv('API_TOKEN')
     if not api_token:
-        abort(401)
+        return
 
     request_token = request.headers.get('X-API-Token')
     if request_token != api_token:

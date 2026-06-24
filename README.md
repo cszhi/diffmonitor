@@ -1,16 +1,19 @@
 # diffmonitor
-对比监控，用于监控服务器上文本类文件（如系统文件、应用配置文件等）的变化或使用命令脚本输出的文本状态的变化（如网卡状态、防火墙规则、磁盘`raid`状态、交换机配置等等）。
 
-> 本程序在 `Python 3.10.2` 下开发
+Diffmonitor monitors changes in text files on servers (such as system files and application configuration files) or changes in text status output from command scripts (such as NIC status, firewall rules, disk RAID status, switch configuration, and more).
 
-## 服务端部署
-> `Docker`部署
-```
+> This application was developed with `Python 3.10.2`.
+
+## Server Deployment
+
+> Docker deployment
+
+```sh
 mkdir /data/diffmonitor -p && cd /data/diffmonitor
 touch data.db
 echo "SECRET_KEY=`uuidgen | sed 's/-//g'`" >.env
 echo "API_TOKEN=`uuidgen | sed 's/-//g'`" >>.env
-echo "ADMIN_PASSWORD='请修改为强密码'" >>.env
+echo "ADMIN_PASSWORD='change-this-to-a-strong-password'" >>.env
 
 docker run -it -d --name diffmonitor \
     -p 5000:5000 \
@@ -19,31 +22,38 @@ docker run -it -d --name diffmonitor \
     -v /data/diffmonitor/log:/app/log \
     cszhi/diffmonitor
 
-docker exec -it diffmonitor sh -c "flask initdb" 
-```
-最后一条命令用于初始化数据库并创建管理员`admin`。
-
-管理员密码优先使用`.env`中的`ADMIN_PASSWORD`。如果未配置`ADMIN_PASSWORD`，系统会自动生成随机密码并在初始化命令输出中打印一次，请妥善保存。
-
-`API_TOKEN`用于客户端访问`/api/*`接口时认证。未配置`API_TOKEN`时会兼容旧客户端，不启用接口认证；生产环境建议配置。
-
-## 客户端部署
-将监控脚本`client/diff_m.sh`放到指定目录下，如`/opt/diff_m`
-
-如果服务端配置了`API_TOKEN`，客户端需要设置相同的环境变量：
-```
-export API_TOKEN='服务端.env中的API_TOKEN'
+docker exec -it diffmonitor sh -c "flask initdb"
 ```
 
-也可以在定时任务中直接指定：
-```
-API_TOKEN='服务端.env中的API_TOKEN' sh /opt/diff_m/diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.32
+The last command initializes the database and creates the administrator user `admin`.
+
+The administrator password uses `ADMIN_PASSWORD` from `.env` first. If `ADMIN_PASSWORD` is not configured, the system automatically generates a random password and prints it once in the initialization command output. Save it securely.
+
+`API_TOKEN` is used to authenticate client access to `/api/*` endpoints. If `API_TOKEN` is not configured, the server remains compatible with older clients and does not enable API authentication. Configuring it is recommended in production.
+
+## Client Deployment
+
+Place the monitoring script `client/diff_m.sh` in the target directory, such as `/opt/diff_m`.
+
+If the server is configured with `API_TOKEN`, the client must set the same environment variable:
+
+```sh
+export API_TOKEN='API_TOKEN from the server .env file'
 ```
 
-### 创建对比配置文件 
+You can also specify it directly in a scheduled task:
+
+```sh
+API_TOKEN='API_TOKEN from the server .env file' sh /opt/diff_m/diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.32
+```
+
+### Create the Diff Configuration File
+
 `list.conf`
-> 根据实际需求添加或删除监控项
-```
+
+> Add or remove monitoring items according to your actual needs.
+
+```sh
 cat >/opt/diff_m/list.conf <<EOF
 authorized_keys file /root/.ssh/authorized_keys hashonly
 shadow file /etc/shadow hashonly
@@ -52,59 +62,66 @@ ceph_osd_tree shell ceph_osd_tree.sh
 iface shell iface.sh
 EOF
 ```
-- 一行一个监控项，前三列分别为：监控名称、监控类型、监控类型对应的文件路径或脚本名；
-- 支持两种监控类型：1、file：任意文本文件 2、shell：自定义shell脚本输出文本；脚本需要放到shell目录下；脚本说明见下方；
-- 第四列可选，填写`hashonly`时只保存`md5/newmd5`和变化状态，不保存原始内容、最新内容和完整diff，适合`/etc/shadow`、`authorized_keys`等敏感文件；
-- 如果要取消某项监控，在对应行前面加#或者直接将该行删除；
 
-### 手动执行 
-> 脚本可以指定三个参数，服务端地址，主机名和主机IP。
+- Each line defines one monitoring item. The first three columns are: monitoring name, monitoring type, and the file path or script name corresponding to the monitoring type.
+- Two monitoring types are supported: `file` for any text file, and `shell` for text output from a custom shell script. Shell scripts must be placed in the `shell` directory. See the script description below.
+- The optional fourth column can be set to `hashonly`. When enabled, only `md5`/`newmd5` and change status are saved; original content, latest content, and the full diff are not saved. This is suitable for sensitive files such as `/etc/shadow` and `authorized_keys`.
+- To disable a monitoring item, add `#` at the beginning of the corresponding line or delete the line.
+
+### Manual Execution
+
+> The script accepts three arguments: server address, host name, and host IP.
 >
-> 其中服务端地址必须指定（ip:端口或域名）；主机名可不指定，默认取系统变量$HOSTNAME；主机IP可不指定，默认用127.0.0.1
+> The server address is required (IP:port or domain name). The host name is optional and defaults to the `$HOSTNAME` environment variable. The host IP is optional and defaults to `127.0.0.1`.
 >
-> 比如服务端地址是192.168.10.10:5000，主机名为ceph01，主机IP为10.10.16.132，用如下命令
+> For example, if the server address is `192.168.10.10:5000`, the host name is `ceph01`, and the host IP is `10.10.16.132`, run:
 
-```
-API_TOKEN='服务端.env中的API_TOKEN' sh diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.132
+```sh
+API_TOKEN='API_TOKEN from the server .env file' sh diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.132
 ```
 
-### 定时任务
-> 将脚本放到定时任务执行，这里设置每10分钟运行一次
-```
+### Scheduled Task
+
+> Add the script to cron. This example runs it every 10 minutes.
+
+```sh
 grep diff_m.sh /var/spool/cron/root >/dev/null || \
-    echo '*/10 * * * * sleep ${RANDOM: -1}; API_TOKEN="服务端.env中的API_TOKEN" sh /opt/diff_m/diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.32' >>/var/spool/cron/root
+    echo '*/10 * * * * sleep ${RANDOM: -1}; API_TOKEN="API_TOKEN from the server .env file" sh /opt/diff_m/diff_m.sh 192.168.10.10:5000 ceph01 10.10.16.32' >>/var/spool/cron/root
 ```
 
-### 自定义脚本说明
-`shell`脚本要能直接输出文本，如`ceph_osd_tree.sh`，就是执行`ceph osd tree`命令，输出`Ceph`集群所有`osd`的状态信息。
-```
-> cat ceph_osd_tree.sh 
+### Custom Script Description
+
+A `shell` script must directly output text. For example, `ceph_osd_tree.sh` runs `ceph osd tree` and outputs the status information for all OSDs in a Ceph cluster.
+
+```sh
+> cat ceph_osd_tree.sh
 #!/bin/bash
 timeout 10 ceph osd tree
 
 
 > sh ceph_osd_tree.sh
-ID WEIGHT    TYPE NAME               UP/DOWN REWEIGHT PRIMARY-AFFINITY 
--6 109.10660 root hdd                                                  
--5  40.00575     host hdd-ceph01                                   
- 1   3.63689         osd.1                up  1.00000          1.00000 
- 3   3.63689         osd.3                up  1.00000          1.00000 
- 0   3.63689         osd.0                up  1.00000          1.00000 
- 4   3.63689         osd.4                up  1.00000          1.00000 
- 5   3.63689         osd.5                up  1.00000          1.00000 
- 2   3.63689         osd.2                up  1.00000          1.00000 
-13   3.63689         osd.13               up  1.00000          1.00000 
-18   3.63689         osd.18               up  1.00000          1.00000 
-19   3.63689         osd.19               up  1.00000          1.00000 
-20   3.63689         osd.20               up  1.00000          1.00000 
-32   3.63689         osd.32               up  1.00000          1.00000 
--7  29.09509     host hdd-ceph02                                   
+ID WEIGHT    TYPE NAME               UP/DOWN REWEIGHT PRIMARY-AFFINITY
+-6 109.10660 root hdd
+-5  40.00575     host hdd-ceph01
+ 1   3.63689         osd.1                up  1.00000          1.00000
+ 3   3.63689         osd.3                up  1.00000          1.00000
+ 0   3.63689         osd.0                up  1.00000          1.00000
+ 4   3.63689         osd.4                up  1.00000          1.00000
+ 5   3.63689         osd.5                up  1.00000          1.00000
+ 2   3.63689         osd.2                up  1.00000          1.00000
+13   3.63689         osd.13               up  1.00000          1.00000
+18   3.63689         osd.18               up  1.00000          1.00000
+19   3.63689         osd.19               up  1.00000          1.00000
+20   3.63689         osd.20               up  1.00000          1.00000
+32   3.63689         osd.32               up  1.00000          1.00000
+-7  29.09509     host hdd-ceph02
  6   3.63689         osd.6                up  1.00000          1.00000
  ......
 ```
 
-`iface.sh`脚本，输出当前服务器所有物理网卡的状态信息。
-```
+The `iface.sh` script outputs status information for all physical NICs on the current server.
+
+```sh
 > cat iface.sh
 #!/bin/bash
 DEVICE=`ls -l /sys/class/net |grep devices|grep -v "virtual" |awk -F'/' '{print $NF}' |tr '\n' '|'`
@@ -122,49 +139,63 @@ ip a |grep "^[[:digit:]]" |grep -E $mDEVICE |grep -v " vif" |awk -F: '{print $2"
  enp1s0f1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP qlen 1000
 ```
 
-这边只是举两个简单的例子，运维人员可根据自身需求编写脚本，并添加到`list.conf`配置文件中。
+These are only two simple examples. Operations engineers can write scripts based on their own requirements and add them to the `list.conf` configuration file.
 
-## 访问web
-> 浏览器访问：http://server_ip:5000
+## Web Access
+
+> Open http://server_ip:5000 in a browser.
 >
-> 管理员用户为`admin`，密码为初始化时配置的`ADMIN_PASSWORD`，如果未配置则使用初始化命令输出的随机密码。
+> The administrator user is `admin`. The password is the `ADMIN_PASSWORD` configured during initialization. If it was not configured, use the random password printed by the initialization command.
 
-### 登录页面
+### Login Page
+
 ![login](diffmonitor/static/images/login.png)
 
-### 首页
+### Home Page
+
 ![home](diffmonitor/static/images/home.png)
 
-### 详细信息
+### Details
+
 ![detail](diffmonitor/static/images/detail.png)
 
+### Monitoring Item Content Changed
 
-### 监控项内容发生变化
-#### 首页
+#### Home Page
+
 ![home_diff](diffmonitor/static/images/home_diff.png)
 
-#### 详细信息
+#### Details
+
 ![detail_diff](diffmonitor/static/images/detail_diff.png)
 
-#### 标记状态
+#### Mark Status
+
 ![confirm](diffmonitor/static/images/confirm.png)
 
-### 历史记录
+### History
+
 ![history](diffmonitor/static/images/history.png)
 
-## 其他
-### 权限说明
-只有管理员`admin`有删除记录和批量操作的权限，其他权限和普通用户一致.
+## Other
 
-### 创建普通用户和修改用户密码
-```
+### Permission Notes
+
+Only the administrator `admin` can delete records and perform batch operations. Other permissions are the same as normal users.
+
+### Create a Normal User or Change a User Password
+
+```sh
 docker exec -it diffmonitor sh -c "flask admin --username user --password 123456"
 ```
-> 用户不存在就创建用户，用户存在就修改用户密码
 
-### 使用MySQL数据库
-数据库默认使用`sqlite`，如果要使用`MySQL`，需要在`.env`文件添加相关配置
-```
+> If the user does not exist, it is created. If the user already exists, its password is changed.
+
+### Use a MySQL Database
+
+The default database is `sqlite`. To use `MySQL`, add the following configuration to the `.env` file:
+
+```env
 DB_DRIVER="mysql"
 MYSQL_USER="root"
 MYSQL_PASSWORD="password"
@@ -172,21 +203,23 @@ MYSQL_HOST="127.0.0.1"
 MYSQL_PORT=3306
 MYSQL_DATABASE="diffmonitor"
 ```
-然后连接`MySQL`并手动创建数据库 `create database diffmonitor`
 
-最后初始化数据库
-```
+Then connect to MySQL and manually create the database: `create database diffmonitor`.
+
+Finally, initialize the database:
+
+```sh
 docker exec -it diffmonitor sh -c "flask initdb"
 ```
 
-### 历史记录状态说明
+### History Status Description
 
-| 历史记录状态 | 对应首页状态 | 说明                                 |
-| ------------ | ------------ | ------------------------------------ |
-| 初始化       | 正常         | 主机监控项初始化                   |
-| 内容变更     | 异常         | 监控项内容共发生变化                 |
-| 处理中       | 处理中       | 人为将状态标记为处理中               |
-| 标记正常     | 正常         | 人为将状态标记为正常                 |
-| 自动恢复     | 正常         | 监控项内容变更后，（没有人为标记为正常状态）又恢复成原来的内容 |
+| History status | Corresponding home status | Description |
+| -------------- | ------------------------- | ----------- |
+| Initialized | Normal | Host monitoring item initialized |
+| Content changed | Abnormal | Monitoring item content changed |
+| Processing | Processing | Status manually marked as processing |
+| Marked normal | Normal | Status manually marked as normal |
+| Auto recovered | Normal | After monitoring item content changed, it recovered to the original content without being manually marked as normal |
 
 ![history](diffmonitor/static/images/history.png)

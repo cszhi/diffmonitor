@@ -1,15 +1,15 @@
-from flask import render_template, request, url_for, redirect, flash, jsonify, abort
-from flask_login import login_user, login_required, logout_user, current_user
-from flask_paginate import Pagination, get_page_parameter
-from sqlalchemy import text
+from datetime import datetime
 from functools import wraps
 
-from diffmonitor import app, db
-from diffmonitor.models import User, Diff, DiffRecord
-from datetime import datetime
+from flask import abort, flash, jsonify, redirect, render_template, request, url_for
+from flask_login import current_user, login_required, login_user, logout_user
+from flask_paginate import Pagination
 
-import os
-import sys
+from diffmonitor import app, db
+from diffmonitor.models import Diff, DiffRecord, User
+
+
+BATCH_COMMENT_SUFFIX = ' - 批量操作'
 
 
 def admin_required(func):
@@ -21,34 +21,109 @@ def admin_required(func):
     return wrapper
 
 
+def _pagination(query, page, page_size):
+    return query.paginate(page=page, per_page=page_size, error_out=False)
+
+
+def _page_size(default=15):
+    return int(request.args.get('page_size') or default)
+
+
+def _selected_ids():
+    return [diff_id for diff_id in request.form.get('ids', '').split() if diff_id]
+
+
+def _status_action(status):
+    return {'0': 'reset', '1': 'process'}.get(status)
+
+
+def _apply_confirm(diff, status, now):
+    original = {
+        'hostname': diff.hostname,
+        'type': diff.type,
+        'ip': diff.ip,
+        'md5': diff.md5,
+        'newmd5': diff.newmd5,
+        'content': diff.content,
+        'newcontent': diff.newcontent,
+        'diff': diff.diff,
+    }
+
+    if status == '0':
+        diff.md5 = diff.newmd5
+        diff.content = diff.newcontent
+        diff.newmd5 = ''
+        diff.newcontent = ''
+        diff.diff = ''
+
+    diff.status = int(status)
+    diff.updated_at = now
+    return original
+
+
+def _build_diff_record(original, action, comment, now):
+    record_data = {
+        'hostname': original['hostname'],
+        'type': original['type'],
+        'ip': original['ip'],
+        'md5': original['md5'],
+        'content': original['content'],
+        'action': action,
+        'comment': comment,
+        'diff': original['diff'],
+        'created_at': now,
+        'username': current_user.username,
+    }
+    if action == 'process':
+        record_data.update({
+            'newmd5': original['newmd5'],
+            'newcontent': original['newcontent'],
+        })
+    return DiffRecord(**record_data)
+
+
+def _confirm_diff(diff, status, comment, now):
+    if diff.status == 0:
+        return None
+
+    original = _apply_confirm(diff, status, now)
+    return _build_diff_record(original, _status_action(status), comment, now)
+
+
+def _validate_confirm_form():
+    comment = request.form.get('comment')
+    status = request.form.get('status')
+    if not comment or not _status_action(status):
+        flash('输入无效.', 'error')
+        return None, None
+    return comment, status
+
+
 @app.route('/diff/')
 @app.route('/')
 @login_required
 def diff():
     hostname = request.args.get('hostname')
     type = request.args.get('type')
-    page_size = int(request.args.get('page_size')) if request.args.get('page_size') else 15
+    page_size = _page_size()
 
-    all_filters = []
+    query = Diff.query
     if hostname:
-        all_filters.append(Diff.hostname.like("{}%".format(hostname)))
+        query = query.filter(Diff.hostname.like('{}%'.format(hostname)))
     if type:
-        all_filters.append(Diff.type == type)
+        query = query.filter(Diff.type == type)
 
-    search = True if hostname or type else False
-    display_msg = '展示 {start}-{end} , 总共 {total}'
-    page = int(request.args.get('page', 1))
-
-    if search:
-        paginate = Diff.query.filter(*all_filters).order_by(text("status desc, created_at desc")).paginate(page=page, per_page=page_size, error_out=False)
+    if hostname or type:
+        query = query.order_by(Diff.status.desc(), Diff.created_at.desc())
     else:
-        paginate = Diff.query.order_by(Diff.status.desc(), Diff.updated_at.desc()).paginate(page=page, per_page=page_size, error_out=False)
+        query = query.order_by(Diff.status.desc(), Diff.updated_at.desc())
 
-    diffs = paginate.items
+    page = int(request.args.get('page', 1))
+    paginate = _pagination(query, page, page_size)
+    pagination = Pagination(page=page, total=paginate.total, per_page=page_size, display_msg='展示 {start}-{end} , 总共 {total}')
 
-    pagination = Pagination(page=page, total=paginate.total, per_page=page_size, display_msg=display_msg)
-    
-    return render_template('diff.html', diffs=diffs, pagination=pagination, page='diff', hostname=hostname, type=type, page_size=page_size)
+    return render_template('diff.html', diffs=paginate.items, pagination=pagination, page='diff', hostname=hostname, type=type, page_size=page_size)
+
 
 @app.route('/diff/show/<int:diff_id>')
 @login_required
@@ -56,169 +131,52 @@ def diff_show(diff_id):
     diff = Diff.query.get_or_404(diff_id)
     return jsonify(diff.obj_to_dict())
 
+
 @app.route('/diff/confirm/<int:diff_id>', methods=['POST'])
 @login_required
 def diff_confirm(diff_id):
-    comment = request.form['comment']
-    status = request.form['status']
-    if not comment or not status:
-            flash('输入无效.', 'error')
-            return redirect(url_for('diff_confirm'))
-    now = datetime.now()
-    #return status
-    if status == '0':  
-        action = "reset"
-    elif status == '1':
-        action = "process"
+    comment, status = _validate_confirm_form()
+    if not comment:
+        return redirect(request.referrer or url_for('diff'))
 
     diff = Diff.query.get_or_404(diff_id)
-    #正常状态不处理
-    if diff.status == 0:
+    record = _confirm_diff(diff, status, comment, datetime.now())
+    if record is None:
         flash('已经是正常状态.', 'info')
-        return redirect(request.referrer)
+        return redirect(request.referrer or url_for('diff'))
 
-    md5 = diff.md5
-    newmd5 = diff.newmd5
-    content = diff.content
-    newcontent = diff.newcontent
-    hostname = diff.hostname
-    type = diff.type
-    ip = diff.ip
-    diffdiff = diff.diff
-
-    #从异常状态标记为正常状态
-    if status == '0':
-        diff.md5 = newmd5
-        diff.content = newcontent
-        diff.newmd5 = ""
-        diff.newcontent = ""
-        diff.diff = ""
-    
-    #从处理中状态标记为正常状态只需修改status和updated_at
-    diff.status = status 
-    diff.updated_at = now
-    db.session.commit()
-
-    #添加记录到历史记录表
-    if status == '0':
-        diffrecord = DiffRecord(
-            hostname=hostname,
-            type=type,
-            ip=ip,
-            md5=md5,
-            content=content,
-            action=action,
-            comment=comment,
-            diff=diffdiff,
-            created_at = now,
-            username=current_user.username
-        )
-    elif status == '1':
-        diffrecord = DiffRecord(
-            hostname=hostname,
-            type=type,
-            ip=ip,
-            md5=md5,
-            newmd5=newmd5,
-            content=content,
-            newcontent=newcontent,
-            action=action,
-            comment=comment,
-            diff=diffdiff,
-            created_at = now,
-            username=current_user.username
-        )
-
-    db.session.add(diffrecord)
+    db.session.add(record)
     db.session.commit()
     flash('标记成功.', 'success')
-    return redirect(request.referrer)
+    return redirect(request.referrer or url_for('diff'))
+
 
 @app.route('/diff/batchconfirm/', methods=['POST'])
 @login_required
 @admin_required
 def diff_batch_confirm():
-    comment = request.form['comment']
-    status = request.form['status']
-    checked = request.form['ids']
+    checked = _selected_ids()
     if not checked:
         flash('未选中任何记录.', 'error')
-        return redirect(request.referrer)
-        
-    checked = checked.split(' ')
-    checked.pop()
-    
-    if not comment or not status:
-            flash('输入无效.', 'error')
-            return redirect(url_for('diff_confirm'))
+        return redirect(request.referrer or url_for('diff'))
+
+    comment, status = _validate_confirm_form()
+    if not comment:
+        return redirect(request.referrer or url_for('diff'))
+
     now = datetime.now()
-    #return status
-    if status == '0':  
-        action = "reset"
-    elif status == '1':
-        action = "process"
+    records = []
+    for diff_id in checked:
+        diff = Diff.query.get_or_404(diff_id)
+        record = _confirm_diff(diff, status, comment + BATCH_COMMENT_SUFFIX, now)
+        if record is not None:
+            records.append(record)
 
-    for i in checked:
-        diff = Diff.query.get_or_404(i)
-        #正常状态不处理
-        if diff.status == 0:
-            continue
-        md5 = diff.md5
-        newmd5 = diff.newmd5
-        content = diff.content
-        newcontent = diff.newcontent
-        hostname = diff.hostname
-        type = diff.type
-        ip = diff.ip
-        diffdiff = diff.diff
-
-        #从异常状态标记为正常状态
-        if status == '0':
-            diff.md5 = newmd5
-            diff.content = newcontent
-            diff.newmd5 = ""
-            diff.newcontent = ""
-            diff.diff = ""
-
-        #从处理中状态标记为正常状态只需修改status和updated_at
-        diff.status = status 
-        diff.updated_at = now
-        db.session.commit()
-
-        #添加记录到历史记录表
-
-        if status == '0':
-            diffrecord = DiffRecord(
-                hostname=hostname,
-                type=type,
-                ip=ip,
-                md5=md5,
-                content=content,
-                action=action,
-                comment=comment+" - 批量操作",
-                diff=diffdiff,
-                created_at = now,
-                username=current_user.username
-            )
-        elif status == '1':
-            diffrecord = DiffRecord(
-                hostname=hostname,
-                type=type,
-                ip=ip,
-                md5=md5,
-                newmd5=newmd5,
-                content=content,
-                newcontent=newcontent,
-                action=action,
-                comment=comment+" - 批量操作",
-                diff=diffdiff,
-                created_at = now,
-                username=current_user.username
-            )
-        db.session.add(diffrecord)
-        db.session.commit()
+    db.session.add_all(records)
+    db.session.commit()
     flash('批量标记成功.', 'success')
-    return redirect(request.referrer)
+    return redirect(request.referrer or url_for('diff'))
+
 
 @app.route('/diff/delete/<int:diff_id>', methods=['POST'])
 @login_required
@@ -228,58 +186,52 @@ def diff_delete(diff_id):
     db.session.delete(diff)
     db.session.commit()
     flash('删除成功.', 'success')
-    return redirect(request.referrer)
+    return redirect(request.referrer or url_for('diff'))
+
 
 @app.route('/diff/batchdelete', methods=['POST'])
 @login_required
 @admin_required
 def diff_batch_delete():
-    checked = request.form['ids']
+    checked = _selected_ids()
     if not checked:
         flash('未选中任何记录.', 'error')
-        return redirect(request.referrer)
-        
-    checked = checked.split(' ')
-    checked.pop()
-    for i in checked:
-        diff = Diff.query.get_or_404(i)
-        db.session.delete(diff)
-        db.session.commit()
+        return redirect(request.referrer or url_for('diff'))
+
+    for diff_id in checked:
+        db.session.delete(Diff.query.get_or_404(diff_id))
+    db.session.commit()
     flash('批量删除成功.', 'success')
-    return redirect(request.referrer)
+    return redirect(request.referrer or url_for('diff'))
+
 
 @app.route('/diffrecord/')
 @login_required
 def diff_record():
-    
     hostname = request.args.get('hostname')
     type = request.args.get('type')
-    page_size = int(request.args.get('page_size')) if request.args.get('page_size') else 15
-    all_filters = []
+    page_size = _page_size()
+
+    query = DiffRecord.query
     if hostname:
-        all_filters.append(DiffRecord.hostname.like("{}%".format(hostname)))
+        query = query.filter(DiffRecord.hostname.like('{}%'.format(hostname)))
     if type:
-        all_filters.append(DiffRecord.type == type)
+        query = query.filter(DiffRecord.type == type)
+    query = query.order_by(DiffRecord.created_at.desc())
 
-    search = True if hostname or type else False 
-    display_msg = '展示 {start}-{end} , 总共 {total}'
     page = int(request.args.get('page', 1))
+    paginate = _pagination(query, page, page_size)
+    pagination = Pagination(page=page, total=paginate.total, per_page=page_size, display_msg='展示 {start}-{end} , 总共 {total}')
 
-    if search:
-        paginate = DiffRecord.query.filter(*all_filters).order_by(DiffRecord.created_at.desc()).paginate(page=page, per_page=page_size, error_out=False)
-    else:
-        paginate = DiffRecord.query.order_by(DiffRecord.created_at.desc()).paginate(page=page, per_page=page_size, error_out=False)
+    return render_template('diffrecord.html', diffs=paginate.items, pagination=pagination, page='diffrecord', hostname=hostname, type=type, page_size=page_size)
 
-    diffs = paginate.items
-    pagination = Pagination(page=page, total=paginate.total, per_page=page_size, display_msg=display_msg)
-    
-    return render_template('diffrecord.html', diffs=diffs, pagination=pagination, page='diffrecord', hostname=hostname, type=type, page_size=page_size)
 
 @app.route('/diffrecord/show/<int:id>')
 @login_required
 def diff_record_show(id):
     diff_record = DiffRecord.query.get_or_404(id)
     return jsonify(diff_record.obj_to_dict())
+
 
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
@@ -299,6 +251,7 @@ def settings():
         return redirect(url_for('settings'))
 
     return render_template('settings.html', page='settings')
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -324,6 +277,7 @@ def login():
         return render_template('login.html', username=username)
 
     return render_template('login.html', page='login')
+
 
 @app.route('/logout')
 @login_required
